@@ -224,12 +224,38 @@ async fn run(node_state: NodeState) -> Result<(), ()> {
         )
     };
 
+    // Meritium testnet safety fallback: load the highest validator set
+    // entry from validators.toml so triedb empty-epoch reads do not panic
+    // with EmptyValidatorSet at epoch boundary.
+    let triedb_fallback_valset = {
+        let cfg: monad_consensus_types::validator_data::ValidatorsConfig<SignatureCollectionType> =
+            monad_consensus_types::validator_data::ValidatorsConfig::read_from_path(
+                &node_state.validators_path,
+            )
+            .expect("validators.toml should be parseable");
+        let vset = cfg.get_validator_set(&Epoch(u64::MAX));
+        let fallback: Vec<_> = vset
+            .0
+            .iter()
+            .map(|d| (d.node_id.pubkey().clone(), d.cert_pubkey.clone(), d.stake))
+            .collect();
+        info!(
+            fallback_len = fallback.len(),
+            "prepared triedb validator-set fallback from validators.toml"
+        );
+        fallback
+    };
+
     let state_backend = StateBackendThreadClient::new({
         let triedb_path = node_state.triedb_path.clone();
+        let fallback_valset = triedb_fallback_valset.clone();
 
         move || {
-            let triedb_handle =
-                TriedbReader::try_new(triedb_path.as_path()).expect("triedb should exist in path");
+            let triedb_handle = TriedbReader::try_new_with_fallback(
+                triedb_path.as_path(),
+                fallback_valset.clone(),
+            )
+            .expect("triedb should exist in path");
 
             StateBackendCache::new(triedb_handle, SeqNum(EXECUTION_DELAY))
         }
@@ -273,6 +299,7 @@ async fn run(node_state: NodeState) -> Result<(), ()> {
                 .get_round(),
             // TODO(andr-dev): Use timestamp from last commit in ledger
             0,
+            node_state.meritium_oracles.clone(),
             score_provider,
             score_reader,
         )
