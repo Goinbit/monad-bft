@@ -78,3 +78,15 @@ pub const MONAD_MAINNET_STAKING_CONFIG: MonadStakingConfig = MonadStakingConfig 
         block_reward_mon: 25,
     },
 };
+
+// Meritium disables Monad-native staking emission entirely: validator/agent
+// rewards are paid through the 0x1001 AgentRewardCall system transaction
+// (PoAW oracle), NOT through Monad's per-epoch block reward. Setting both
+// activations to Epoch::MAX makes get_block_reward_mon() always return 0 and
+// keeps Monad native staking permanently inactive (A9: 禁用 25 MON/epoch 幽灵发放).
+// Shared by Meritium mainnet/testnet/devnet.
+pub const MERITIUM_STAKING_CONFIG: MonadStakingConfig = MonadStakingConfig {
+    staking_activation: Epoch::MAX,
+
+    block_reward_v_one: BlockRewardConfig::unused(),
+};

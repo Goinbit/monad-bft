@@ -20,8 +20,8 @@ use revision::{
 };
 use serde::Deserialize;
 use staking_config::{
-    MonadStakingConfig, MONAD_DEVNET_STAKING_CONFIG, MONAD_MAINNET_STAKING_CONFIG,
-    MONAD_TESTNET_STAKING_CONFIG,
+    MonadStakingConfig, MERITIUM_STAKING_CONFIG, MONAD_DEVNET_STAKING_CONFIG,
+    MONAD_MAINNET_STAKING_CONFIG, MONAD_TESTNET_STAKING_CONFIG,
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -35,6 +35,13 @@ pub const ETHEREUM_MAINNET_CHAIN_ID: u64 = 1;
 pub const MONAD_MAINNET_CHAIN_ID: u64 = 143;
 pub const MONAD_TESTNET_CHAIN_ID: u64 = 10143;
 pub const MONAD_DEVNET_CHAIN_ID: u64 = 20143;
+
+// Meritium chain ids. Mainnet is 888 (founder decision 2026-06-24). The live
+// testnet runs as 20260401; devnet is given a distinct id to avoid an
+// unreachable match arm alongside testnet in downstream consumers (monad-rpc).
+pub const MERITIUM_MAINNET_CHAIN_ID: u64 = 888;
+pub const MERITIUM_TESTNET_CHAIN_ID: u64 = 20_260_401;
+pub const MERITIUM_DEVNET_CHAIN_ID: u64 = 20_260_402;
 
 pub trait ChainConfig<CR: ChainRevision>: Copy + Clone {
     fn chain_id(&self) -> u64;
@@ -105,6 +112,30 @@ impl MonadChainConfig {
             }
 
             info!("Using override devnet chain config");
+            Ok(override_config)
+        } else if chain_id == MERITIUM_MAINNET_CHAIN_ID {
+            if devnet_override.is_some() {
+                warn!("Ignoring chain config from file in Meritium mainnet");
+            }
+            Ok(MERITIUM_MAINNET_CHAIN_CONFIG)
+        } else if chain_id == MERITIUM_TESTNET_CHAIN_ID {
+            if devnet_override.is_some() {
+                warn!("Ignoring chain config from file in Meritium testnet");
+            }
+            Ok(MERITIUM_TESTNET_CHAIN_CONFIG)
+        } else if chain_id == MERITIUM_DEVNET_CHAIN_ID {
+            let Some(override_config) = devnet_override else {
+                info!("Using default Meritium devnet chain config");
+                return Ok(MERITIUM_DEVNET_CHAIN_CONFIG);
+            };
+
+            if override_config.chain_id != MERITIUM_DEVNET_CHAIN_ID {
+                return Err(ChainConfigError::WrongOverrideChainId(
+                    override_config.chain_id,
+                ));
+            }
+
+            info!("Using override Meritium devnet chain config");
             Ok(override_config)
         } else {
             Err(ChainConfigError::UnsupportedChainId(chain_id))
@@ -211,6 +242,66 @@ const MONAD_MAINNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
     execution_v_one_activation: 0,
     execution_v_two_activation: 0,
     execution_v_four_activation: 1762266600, // 2025-11-04T14:30:00.000Z
+};
+
+// Meritium mainnet (chain id 888). A fresh fork starts at the latest protocol
+// revision from genesis, so all consensus/execution hardforks activate at
+// Round::MIN / timestamp 0. epoch_length is 1_000_000 (~11.6 days) as the
+// current workaround that avoids epoch-boundary validator-set transitions until
+// ValidatorRegistry.sol + epoch-end snapshot lands (see MAINNET_BLOCKERS M-06).
+const MERITIUM_MAINNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
+    chain_id: MERITIUM_MAINNET_CHAIN_ID,
+    epoch_length: SeqNum(1_000_000),
+    epoch_start_delay: Round(5_000),
+
+    v_0_7_0_activation: Round::MIN,
+    v_0_8_0_activation: Round::MIN,
+    v_0_10_0_activation: Round::MIN,
+    v_0_11_0_activation: Round::MIN,
+
+    staking_config: MERITIUM_STAKING_CONFIG,
+
+    execution_v_one_activation: 0,
+    execution_v_two_activation: 0,
+    execution_v_four_activation: 0,
+};
+
+// Meritium testnet — the live testnet runs as chain id 20260401 with the same
+// 1_000_000 epoch_length workaround.
+const MERITIUM_TESTNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
+    chain_id: MERITIUM_TESTNET_CHAIN_ID,
+    epoch_length: SeqNum(1_000_000),
+    epoch_start_delay: Round(5_000),
+
+    v_0_7_0_activation: Round::MIN,
+    v_0_8_0_activation: Round::MIN,
+    v_0_10_0_activation: Round::MIN,
+    v_0_11_0_activation: Round::MIN,
+
+    staking_config: MERITIUM_STAKING_CONFIG,
+
+    execution_v_one_activation: 0,
+    execution_v_two_activation: 0,
+    execution_v_four_activation: 0,
+};
+
+// Meritium devnet — supports a node.toml override (like Monad devnet); shorter
+// epoch for local iteration.
+const MERITIUM_DEVNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
+    chain_id: MERITIUM_DEVNET_CHAIN_ID,
+    epoch_length: SeqNum(10_000),
+    epoch_start_delay: Round(1_000),
+
+    v_0_7_0_activation: Round::MIN,
+    v_0_8_0_activation: Round::MIN,
+    v_0_10_0_activation: Round::MIN,
+    v_0_11_0_activation: Round::MIN,
+
+    staking_config: MERITIUM_STAKING_CONFIG,
+
+    execution_v_one_activation: 0,
+    execution_v_two_activation: 0,
+    execution_v_four_activation: 0,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
