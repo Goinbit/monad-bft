@@ -53,7 +53,7 @@ pub mod validator;
 //
 // Tests: use a deterministic test key to keep unit tests stable without
 // external env wiring.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-system-sender-key"))]
 pub(crate) const TEST_SYSTEM_SENDER_PRIV_KEY: B256 = B256::new(hex!(
     "b0358e6d701a955d9926676f227e40172763296b317ff554e49cdf2c2c35f8a7"
 ));
@@ -119,9 +119,13 @@ fn system_sender_priv_key() -> &'static B256 {
     KEY.get_or_init(|| match std::env::var("MERITIUM_SYSTEM_SENDER_PRIV_KEY") {
         Ok(v) => parse_env_system_sender_key(&v)
             .unwrap_or_else(|err| panic!("invalid MERITIUM_SYSTEM_SENDER_PRIV_KEY: {err}")),
-        #[cfg(test)]
+        // `cfg(test)` covers this crate's own unit tests; the
+        // `test-system-sender-key` feature lets DOWNSTREAM crates' test builds
+        // (which compile this as a non-test dependency) use the test key too.
+        // Production builds must have neither and will panic below.
+        #[cfg(any(test, feature = "test-system-sender-key"))]
         Err(_) => TEST_SYSTEM_SENDER_PRIV_KEY,
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "test-system-sender-key")))]
         Err(_) => panic!("MERITIUM_SYSTEM_SENDER_PRIV_KEY is required in non-test builds"),
     })
 }

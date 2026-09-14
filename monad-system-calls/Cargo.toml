@@ -3,6 +3,14 @@ name = "monad-system-calls"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# Enables the TEST_SYSTEM_SENDER_PRIV_KEY fallback when
+# MERITIUM_SYSTEM_SENDER_PRIV_KEY is unset. `#[cfg(test)]` only covers this
+# crate's own unit tests; downstream crates (e.g. meritium-node) compile this
+# as a non-test dependency even under `cargo test`, so their test builds opt
+# in via [dev-dependencies]. NEVER enable in release/production builds.
+test-system-sender-key = []
+
 [dependencies]
 monad-chain-config = { workspace = true }
 monad-consensus-types = { workspace = true }
