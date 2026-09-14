@@ -24,6 +24,7 @@ use serde::Deserialize;
 pub use self::{
     bootstrap::{NodeBootstrapConfig, NodeBootstrapPeerConfig},
     fullnode::{FullNodeConfig, FullNodeIdentityConfig},
+    meritium::MeritiumConfig,
     network::NodeNetworkConfig,
     peers::PeerDiscoveryConfig,
     sync_peers::{BlockSyncPeersConfig, StateSyncPeersConfig, SyncPeerIdentityConfig},
@@ -31,6 +32,7 @@ pub use self::{
 
 mod bootstrap;
 mod fullnode;
+mod meritium;
 mod network;
 mod peers;
 
@@ -69,6 +71,8 @@ pub struct NodeConfig<ST: CertificateSignatureRecoverable> {
     pub peer_discovery: PeerDiscoveryConfig<ST>,
     #[serde(default)]
     pub txpool_peer_score: ema::ScoreConfig,
+    #[serde(default)]
+    pub meritium: Option<MeritiumConfig>,
 
     pub fullnode_raptorcast: FullNodeRaptorCastConfig<CertificateSignaturePubKey<ST>>,
 

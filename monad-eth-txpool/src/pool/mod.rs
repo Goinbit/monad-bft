@@ -21,6 +21,7 @@ use alloy_consensus::{
 use alloy_primitives::Address;
 use alloy_rlp::Encodable;
 use itertools::{Either, Itertools};
+use meritium_node::MeritiumOracleBundle;
 use monad_chain_config::{
     execution_revision::MonadExecutionRevision,
     revision::{ChainRevision, MockChainRevision},
@@ -88,6 +89,7 @@ where
     chain_id: u64,
     chain_revision: CRT,
     execution_revision: MonadExecutionRevision,
+    meritium_oracles: MeritiumOracleBundle,
 }
 
 impl<ST, SCT, SBT, CCT, CRT> EthTxPool<ST, SCT, SBT, CCT, CRT>
@@ -104,6 +106,7 @@ where
         chain_id: u64,
         chain_revision: CRT,
         execution_revision: MonadExecutionRevision,
+        meritium_oracles: MeritiumOracleBundle,
     ) -> Self {
         let EthTxPoolConfig {
             limits: config_limits,
@@ -117,6 +120,7 @@ where
             chain_id,
             chain_revision,
             execution_revision,
+            meritium_oracles,
         }
     }
 
@@ -588,14 +592,30 @@ where
             }
         };
 
-        let sys_txns = SystemTransactionGenerator::generate_system_transactions(
-            proposed_seq_num,
-            proposed_epoch,
-            parent_block_epoch,
-            block_author,
-            next_system_txn_nonce,
-            chain_config,
-        );
+        let sys_txns =
+            SystemTransactionGenerator::generate_system_transactions_with_meritium_bundle(
+                proposed_seq_num,
+                proposed_epoch,
+                parent_block_epoch,
+                block_author,
+                next_system_txn_nonce,
+                chain_config,
+                self.meritium_oracles.rewards.rewards_for_block(
+                    proposed_seq_num,
+                    proposed_epoch,
+                    block_author,
+                ),
+                self.meritium_oracles.audits.audits_for_block(
+                    proposed_seq_num,
+                    proposed_epoch,
+                    block_author,
+                ),
+                self.meritium_oracles.verifications.verifications_for_block(
+                    proposed_seq_num,
+                    proposed_epoch,
+                    block_author,
+                ),
+            );
 
         debug!(
             ?proposed_seq_num,
@@ -749,6 +769,7 @@ where
             MockChainConfig::DEFAULT.chain_id(),
             MockChainRevision::DEFAULT,
             MonadExecutionRevision::LATEST,
+            MeritiumOracleBundle::noop(),
         )
     }
 }

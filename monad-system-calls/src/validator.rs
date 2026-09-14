@@ -35,7 +35,7 @@ use monad_types::Epoch;
 use monad_validator::signature_collection::SignatureCollection;
 use tracing::{debug, info, warn};
 
-use crate::{SYSTEM_SENDER_ETH_ADDRESS, SystemCall, generate_system_calls};
+use crate::{SYSTEM_SENDER_ETH_ADDRESS, SystemCall, generate_expected_system_calls_for_validation};
 
 #[derive(Debug)]
 pub enum SystemTransactionError {
@@ -219,7 +219,7 @@ impl SystemTransactionValidator {
             return Ok(());
         }
 
-        let expected_sys_calls = generate_system_calls(
+        let expected_sys_calls = generate_expected_system_calls_for_validation(
             block_header.seq_num,
             block_header.epoch,
             parent_block_epoch,
@@ -285,7 +285,7 @@ mod test {
     use monad_types::{Epoch, GENESIS_SEQ_NUM, Hash, NodeId, Round, SeqNum};
 
     use crate::{
-        SYSTEM_SENDER_ETH_ADDRESS, SYSTEM_SENDER_PRIV_KEY,
+        SYSTEM_SENDER_ETH_ADDRESS, TEST_SYSTEM_SENDER_PRIV_KEY,
         test_utils::{get_valid_system_transaction, sign_with_system_sender},
         validator::{
             SystemTransactionError, SystemTransactionValidationError, SystemTransactionValidator,
@@ -331,7 +331,7 @@ mod test {
         };
 
         let signature_hash = transaction.signature_hash();
-        let local_signer = LocalSigner::from_bytes(&SYSTEM_SENDER_PRIV_KEY).unwrap();
+        let local_signer = LocalSigner::from_bytes(&TEST_SYSTEM_SENDER_PRIV_KEY).unwrap();
         let signature = local_signer.sign_hash_sync(&signature_hash).unwrap();
 
         let recovered = Recovered::new_unchecked(

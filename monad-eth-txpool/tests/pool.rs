@@ -27,6 +27,7 @@ use alloy_primitives::{Address, TxKind, B256, U256};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use itertools::Itertools;
+use meritium_node::MeritiumOracleBundle;
 use monad_chain_config::{revision::MockChainRevision, ChainConfig, MockChainConfig};
 use monad_consensus_types::{
     block::{BlockPolicy, GENESIS_TIMESTAMP},
@@ -1827,6 +1828,7 @@ fn test_eviction_policy() {
                     MockChainConfig::DEFAULT.chain_id(),
                     MockChainConfig::DEFAULT.get_chain_revision(GENESIS_ROUND),
                     MockChainConfig::DEFAULT.get_execution_chain_revision(GENESIS_TIMESTAMP as u64),
+                    MeritiumOracleBundle::noop(),
                 )
             },
             make_test_block_policy,

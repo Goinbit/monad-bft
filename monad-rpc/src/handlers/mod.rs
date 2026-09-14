@@ -79,7 +79,8 @@ pub mod resources;
 mod txpool;
 
 use monad_chain_config::{
-    ETHEREUM_MAINNET_CHAIN_ID, MONAD_DEVNET_CHAIN_ID, MONAD_MAINNET_CHAIN_ID,
+    ETHEREUM_MAINNET_CHAIN_ID, MERITIUM_DEVNET_CHAIN_ID, MERITIUM_MAINNET_CHAIN_ID,
+    MERITIUM_TESTNET_CHAIN_ID, MONAD_DEVNET_CHAIN_ID, MONAD_MAINNET_CHAIN_ID,
     MONAD_TESTNET_CHAIN_ID,
 };
 use monad_ethcall::ChainId;
@@ -87,9 +88,9 @@ use monad_ethcall::ChainId;
 pub(crate) fn parse_ethcall_chain_id(chain_id: u64) -> JsonRpcResult<ChainId> {
     match chain_id {
         ETHEREUM_MAINNET_CHAIN_ID => Ok(ChainId::EthereumMainnet),
-        MONAD_MAINNET_CHAIN_ID => Ok(ChainId::MonadMainnet),
-        MONAD_TESTNET_CHAIN_ID => Ok(ChainId::MonadTestnet),
-        MONAD_DEVNET_CHAIN_ID => Ok(ChainId::MonadDevnet),
+        MONAD_MAINNET_CHAIN_ID | MERITIUM_MAINNET_CHAIN_ID => Ok(ChainId::MonadMainnet),
+        MONAD_TESTNET_CHAIN_ID | MERITIUM_TESTNET_CHAIN_ID => Ok(ChainId::MonadTestnet),
+        MONAD_DEVNET_CHAIN_ID | MERITIUM_DEVNET_CHAIN_ID => Ok(ChainId::MonadDevnet),
         other => Err(JsonRpcError::eth_call_error(
             "unsupported chain id".to_string(),
             Some(other.to_string()),

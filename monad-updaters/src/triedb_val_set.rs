@@ -202,13 +202,15 @@ impl Executor for ValSetUpdater<SecpSignature, BlsSignatureCollection<PubKey>> {
 
                         let locked_epoch = seq_num.get_locked_epoch(self.epoch_length);
 
-                        if locked_epoch >= self.staking_activation {
-                            self.valset_request_sender
-                                .send((seq_num, locked_epoch))
-                                .expect("channel never closed");
-                        } else {
-                            self.valset_update_from_validators_toml(seq_num);
-                        }
+                        // Meritium A9 fix: always go through read_valset_at_block so
+                        // the C4 Option B on-chain oracle gets invoked. The internal logic
+                        // (oracle → FFI → validators.toml fallback) handles both
+                        // Meritium (staking_activation=Epoch::MAX, oracle wins) and Monad
+                        // (staking_activation=Epoch(2), FFI wins) correctly.
+                        let _ = self.staking_activation; // suppress unused warning
+                        self.valset_request_sender
+                            .send((seq_num, locked_epoch))
+                            .expect("channel never closed");
                     }
                 }
             }

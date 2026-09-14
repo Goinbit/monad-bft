@@ -21,13 +21,20 @@ use std::{
     path::PathBuf,
     process,
     sync::Arc,
+    thread,
     time::{Duration, Instant},
 };
 
+use alloy_primitives::Address;
 use alloy_rlp::{Decodable, Encodable};
 use chrono::Utc;
 use clap::CommandFactory;
 use futures_util::{FutureExt, StreamExt};
+use meritium_node::{
+    load_task_reward_signal_next_source_block, store_task_reward_signal_next_source_block,
+    TaskRewardSignalContext, TaskRewardSignalIndexPolicy, TaskRewardSignalIndexer,
+    TaskRewardSignalRpcLogProvider,
+};
 use monad_chain_config::ChainConfig;
 use monad_consensus_state::ConsensusConfig;
 use monad_consensus_types::{metrics::Metrics, validator_data::ValidatorSetDataWithEpoch};
@@ -139,8 +146,171 @@ fn main() {
         });
     }
 
+    spawn_meritium_reward_signal_indexer(&node_state);
+
     if let Err(e) = runtime.block_on(run(node_state)) {
         tracing::error!("monad consensus node crashed: {:?}", e);
+    }
+}
+
+fn spawn_meritium_reward_signal_indexer(node_state: &NodeState) {
+    let Some(cfg) = node_state.node_config.meritium.as_ref() else {
+        return;
+    };
+    if !cfg.reward_signal_indexing_enabled() {
+        return;
+    }
+
+    let Some(pending_rewards) = node_state.meritium_oracles.pending_rewards.clone() else {
+        warn!("meritium reward-signal indexer configured but pending source is absent");
+        return;
+    };
+
+    let Some(task_market_address) = cfg.task_market_address.as_deref() else {
+        warn!("meritium reward-signal indexer configured without task_market_address");
+        return;
+    };
+    let Ok(task_market_address) = task_market_address.parse::<Address>() else {
+        warn!("invalid meritium task_market_address; reward-signal indexer disabled");
+        return;
+    };
+    let Some(rpc_url) = cfg.reward_signal_rpc_url.clone() else {
+        warn!("meritium reward-signal indexer configured without reward_signal_rpc_url");
+        return;
+    };
+
+    let provider = TaskRewardSignalRpcLogProvider::new(rpc_url, task_market_address);
+    let latest_provider = provider.clone();
+    let cursor_path = node_state
+        .ledger_path
+        .with_file_name("meritium-reward-signal-indexer.cursor");
+    let policy = TaskRewardSignalIndexPolicy {
+        reward_delay_blocks: cfg.reward_signal_delay_blocks,
+        prune_depth_blocks: cfg.reward_signal_prune_depth_blocks,
+        context: TaskRewardSignalContext::default(),
+    };
+
+    let spawn_result = thread::Builder::new()
+        .name("meritium-reward-signal-indexer".to_owned())
+        .spawn(move || {
+            let mut indexer = None;
+            loop {
+                match latest_provider.latest_block_number() {
+                    Ok(latest_source_block) => {
+                        let indexer = indexer.get_or_insert_with(|| {
+                            let next_source_block =
+                                load_reward_signal_cursor(&cursor_path, latest_source_block);
+                            info!(
+                                cursor_path = %cursor_path.display(),
+                                latest_source_block = latest_source_block.0,
+                                next_source_block = next_source_block.0,
+                                "meritium reward-signal indexer cursor initialized"
+                            );
+                            TaskRewardSignalIndexer::new(
+                                provider.clone(),
+                                pending_rewards.clone(),
+                                policy,
+                                next_source_block,
+                            )
+                        });
+
+                        match indexer.tick_to_latest_source_block(latest_source_block) {
+                            Ok(reports) if !reports.is_empty() => {
+                                let pending_count: usize =
+                                    reports.iter().map(|report| report.pending_count).sum();
+                                info!(
+                                    latest_source_block = latest_source_block.0,
+                                    indexed_blocks = reports.len(),
+                                    pending_count,
+                                    next_source_block = indexer.next_source_block().0,
+                                    "meritium reward-signal indexer tick complete"
+                                );
+                                if let Err(err) = store_task_reward_signal_next_source_block(
+                                    &cursor_path,
+                                    indexer.next_source_block(),
+                                ) {
+                                    warn!(
+                                        ?err,
+                                        cursor_path = %cursor_path.display(),
+                                        next_source_block = indexer.next_source_block().0,
+                                        "failed to persist meritium reward-signal indexer cursor"
+                                    );
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(err) => {
+                                warn!(
+                                    ?err,
+                                    latest_source_block = latest_source_block.0,
+                                    "meritium reward-signal indexer tick failed"
+                                );
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        warn!(
+                            ?err,
+                            "meritium reward-signal indexer failed to read latest block"
+                        );
+                    }
+                }
+
+                thread::sleep(Duration::from_millis(500));
+            }
+        });
+
+    if let Err(err) = spawn_result {
+        warn!(
+            ?err,
+            "failed to spawn meritium reward-signal indexer thread"
+        );
+    }
+}
+
+fn load_reward_signal_cursor(cursor_path: &PathBuf, latest_source_block: SeqNum) -> SeqNum {
+    match load_task_reward_signal_next_source_block(cursor_path) {
+        Ok(Some(next_source_block)) => {
+            info!(
+                cursor_path = %cursor_path.display(),
+                next_source_block = next_source_block.0,
+                "loaded meritium reward-signal indexer cursor"
+            );
+            next_source_block
+        }
+        Ok(None) => {
+            let next_source_block = SeqNum(latest_source_block.0.saturating_add(1));
+            if let Err(err) =
+                store_task_reward_signal_next_source_block(cursor_path, next_source_block)
+            {
+                warn!(
+                    ?err,
+                    cursor_path = %cursor_path.display(),
+                    next_source_block = next_source_block.0,
+                    "failed to initialize meritium reward-signal indexer cursor"
+                );
+            }
+            next_source_block
+        }
+        Err(err) => {
+            let next_source_block = SeqNum(latest_source_block.0.saturating_add(1));
+            warn!(
+                ?err,
+                cursor_path = %cursor_path.display(),
+                next_source_block = next_source_block.0,
+                "invalid meritium reward-signal indexer cursor; starting after latest source block"
+            );
+            if let Err(err) =
+                store_task_reward_signal_next_source_block(cursor_path, next_source_block)
+            {
+                warn!(
+                    ?err,
+                    cursor_path = %cursor_path.display(),
+                    next_source_block = next_source_block.0,
+                    "failed to repair meritium reward-signal indexer cursor"
+                );
+            }
+            next_source_block
+        }
     }
 }
 
@@ -251,11 +421,9 @@ async fn run(node_state: NodeState) -> Result<(), ()> {
         let fallback_valset = triedb_fallback_valset.clone();
 
         move || {
-            let triedb_handle = TriedbReader::try_new_with_fallback(
-                triedb_path.as_path(),
-                fallback_valset.clone(),
-            )
-            .expect("triedb should exist in path");
+            let triedb_handle =
+                TriedbReader::try_new_with_fallback(triedb_path.as_path(), fallback_valset.clone())
+                    .expect("triedb should exist in path");
 
             StateBackendCache::new(triedb_handle, SeqNum(EXECUTION_DELAY))
         }

@@ -23,6 +23,9 @@ use std::{
 
 use agent::AgentBuilder;
 use clap::{error::ErrorKind, FromArgMatches};
+use meritium_node::{
+    build_oracle_bundle, MeritiumBundleInputs, MeritiumOracleBundle, SharedPendingRewardBatch,
+};
 use monad_bls::BlsKeyPair;
 use monad_chain_config::MonadChainConfig;
 use monad_consensus_types::validator_data::ValidatorsConfigFile;
@@ -30,6 +33,7 @@ use monad_control_panel::TracingReload;
 use monad_keystore::keystore::Keystore;
 use monad_node_config::{ForkpointConfig, MonadNodeConfig, ValidatorsConfigType};
 use monad_secp::KeyPair;
+use monad_system_calls::{set_meritium_system_call_config, MeritiumSystemCallConfig};
 use monad_types::Round;
 use reqwest::{blocking::Client, Url};
 use tracing::{info, warn};
@@ -51,6 +55,7 @@ pub struct NodeState {
     pub forkpoint_config: ForkpointConfig,
     pub validators_config: ValidatorsConfigType,
     pub chain_config: MonadChainConfig,
+    pub meritium_oracles: MeritiumOracleBundle,
 
     pub secp256k1_identity: KeyPair,
     pub router_identity: KeyPair,
@@ -153,6 +158,66 @@ impl NodeState {
             };
         let chain_config =
             MonadChainConfig::new(node_config.chain_id, devnet_chain_config_override)?;
+        let meritium_oracles = if let Some(cfg) = node_config.meritium.as_ref() {
+            cfg.validate().map_err(|msg| NodeSetupError::Custom {
+                kind: ErrorKind::InvalidValue,
+                msg,
+            })?;
+            set_meritium_system_call_config(MeritiumSystemCallConfig {
+                rewards_enabled: cfg.rewards_enabled,
+                audits_enabled: cfg.audits_enabled,
+                verifications_enabled: cfg.verifications_enabled,
+                founder_vesting_address: cfg.founder_vesting_address.as_deref().map(|addr| {
+                    addr.parse()
+                        .expect("founder_vesting_address should be pre-validated")
+                }),
+                founder_vesting_activation_seq: cfg.founder_vesting_activation_seq,
+            });
+            info!("configured meritium system-call validation alignment");
+            info!(
+                rewards_enabled = cfg.rewards_enabled,
+                audits_enabled = cfg.audits_enabled,
+                verifications_enabled = cfg.verifications_enabled,
+                threshold_m = cfg.threshold_m,
+                threshold_n = cfg.threshold_n,
+                has_vrf_seed = cfg.vrf_seed.is_some(),
+                has_founder_vesting_address = cfg.founder_vesting_address.is_some(),
+                founder_vesting_activation_seq = cfg.founder_vesting_activation_seq,
+                has_poaw_endpoint = cfg.poaw_endpoint.is_some(),
+                has_reward_signal_indexer = cfg.reward_signal_indexing_enabled(),
+                "meritium config enabled"
+            );
+            let pending_reward_source = if cfg.reward_signal_indexing_enabled() {
+                info!(
+                    task_market_address = cfg.task_market_address.as_deref().unwrap_or_default(),
+                    reward_signal_rpc_url =
+                        cfg.reward_signal_rpc_url.as_deref().unwrap_or_default(),
+                    reward_signal_delay_blocks = cfg.reward_signal_delay_blocks,
+                    reward_signal_prune_depth_blocks = cfg.reward_signal_prune_depth_blocks,
+                    "meritium reward-signal pending source enabled"
+                );
+                Some(SharedPendingRewardBatch::default())
+            } else {
+                None
+            };
+            build_oracle_bundle(MeritiumBundleInputs {
+                rewards_enabled: cfg.rewards_enabled,
+                audits_enabled: cfg.audits_enabled,
+                verifications_enabled: cfg.verifications_enabled,
+                vrf_seed: cfg.vrf_seed.as_deref(),
+                founder_vesting_address: cfg.founder_vesting_address.as_deref(),
+                founder_vesting_activation_seq: cfg.founder_vesting_activation_seq,
+                pending_reward_source,
+                threshold_m: cfg.threshold_m,
+                threshold_n: cfg.threshold_n,
+                poaw_endpoint: cfg.poaw_endpoint.as_deref(),
+            })
+        } else {
+            set_meritium_system_call_config(MeritiumSystemCallConfig::default());
+            info!("configured meritium system-call validation alignment (default/noop)");
+            info!("meritium config absent; using noop meritium oracle bundle");
+            MeritiumOracleBundle::noop()
+        };
 
         let wal_path = wal_path.with_file_name(format!(
             "{}_{}",
@@ -183,6 +248,7 @@ impl NodeState {
             forkpoint_config,
             validators_config,
             chain_config,
+            meritium_oracles,
 
             secp256k1_identity: secp_key,
             router_identity: router_key,

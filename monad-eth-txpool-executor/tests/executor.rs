@@ -21,6 +21,7 @@ use std::{
 
 use bytes::Bytes;
 use futures::{task::noop_waker_ref, SinkExt, StreamExt};
+use meritium_node::MeritiumOracleBundle;
 use monad_chain_config::{revision::MockChainRevision, ChainConfig, MockChainConfig};
 use monad_consensus_types::block::GENESIS_TIMESTAMP;
 use monad_crypto::NopSignature;
@@ -81,6 +82,7 @@ async fn setup_txpool_executor_with_client() -> (
         MockChainConfig::DEFAULT,
         GENESIS_ROUND,
         GENESIS_TIMESTAMP as u64,
+        MeritiumOracleBundle::noop(),
         score_provider,
         score_reader,
     )

@@ -9,6 +9,7 @@ name = "monad-node"
 bench = false
 
 [dependencies]
+meritium-node = { path = "../../../chain/meritium-node" }
 monad-bls = { workspace = true }
 monad-chain-config = { workspace = true }
 monad-consensus-state = { workspace = true }
@@ -30,6 +31,7 @@ monad-pprof = { workspace = true }
 monad-raptorcast = { workspace = true }
 monad-router-multi = { workspace = true}
 monad-secp = { workspace = true }
+monad-system-calls = { workspace = true }
 monad-state = { workspace = true }
 monad-state-backend = { workspace = true }
 monad-state-backend-cache = { workspace = true }
@@ -43,6 +45,7 @@ monad-wal = { workspace = true }
 monad-wireauth = { workspace = true }
 
 agent = { workspace = true }
+alloy-primitives = { workspace = true }
 alloy-rlp = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive"] }

@@ -200,8 +200,17 @@ where
         )
         .expect("failed to write validators");
 
-        // if staking has been activated, overwrite validators.toml
-        if epoch >= self.staking_activation {
+        // Meritium A9 fix: when staking_activation = Epoch::MAX (A9 disables Monad's
+        // staking syscalls), the original gate `epoch >= self.staking_activation` is
+        // always false → main validators.toml never gets overwritten by BFT. After a
+        // cron restart, BFT reads the saved forkpoint (epoch N round R) but cannot find
+        // an epoch=N entry in validators.toml → InvalidQC panic at monad-state:895.
+        //
+        // Fix: treat Epoch::MAX as the "Meritium always-write" sentinel. The original
+        // Monad path (staking_activation = Epoch(2) or Epoch(675)) continues to gate on
+        // epoch progress. Per-epoch backup files are still written above either way.
+        let meritium_always_write = self.staking_activation == Epoch::MAX;
+        if meritium_always_write || epoch >= self.staking_activation {
             let temp_path = {
                 let mut file_name = self
                     .validators_path

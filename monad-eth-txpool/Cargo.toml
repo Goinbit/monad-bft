@@ -9,6 +9,7 @@ edition = "2021"
 bench = false
 
 [dependencies]
+meritium-node = { path = "../../../chain/meritium-node" }
 monad-chain-config = { workspace = true }
 monad-consensus-types = { workspace = true }
 monad-crypto = { workspace = true }

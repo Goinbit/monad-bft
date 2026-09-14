@@ -28,6 +28,7 @@ use alloy_eips::Decodable2718;
 use alloy_primitives::Address;
 use bytes::Bytes;
 use futures::Stream;
+use meritium_node::MeritiumOracleBundle;
 use monad_chain_config::{revision::ChainRevision, ChainConfig};
 use monad_consensus_types::{
     block::{BlockPolicy, ProposedExecutionInputs},
@@ -198,6 +199,7 @@ where
         chain_config: CCT,
         round: Round,
         execution_timestamp_s: u64,
+        meritium_oracles: MeritiumOracleBundle,
         score_provider: ema::ScoreProvider<NodeId<CertificateSignaturePubKey<ST>>, StdClock>,
         score_reader: ema::ScoreReader<NodeId<CertificateSignaturePubKey<ST>>, StdClock>,
     ) -> io::Result<EthTxPoolExecutorClient<ST, SCT, SBT, CCT, CRT>> {
@@ -229,6 +231,7 @@ where
                         chain_config.chain_id(),
                         chain_config.get_chain_revision(round),
                         chain_config.get_execution_chain_revision(execution_timestamp_s),
+                        meritium_oracles,
                     );
 
                     Self {
@@ -1030,6 +1033,7 @@ mod test {
                     chain_config.chain_id(),
                     chain_config.get_chain_revision(round),
                     chain_config.get_execution_chain_revision(execution_timestamp_s),
+                    meritium_node::MeritiumOracleBundle::noop(),
                 );
 
                 ExecutorType {
