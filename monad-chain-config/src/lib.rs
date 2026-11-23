@@ -246,12 +246,16 @@ const MONAD_MAINNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
 
 // Meritium mainnet (chain id 888). A fresh fork starts at the latest protocol
 // revision from genesis, so all consensus/execution hardforks activate at
-// Round::MIN / timestamp 0. epoch_length is 1_000_000 (~11.6 days) as the
-// current workaround that avoids epoch-boundary validator-set transitions until
-// ValidatorRegistry.sol + epoch-end snapshot lands (see MAINNET_BLOCKERS M-06).
+// Round::MIN / timestamp 0.
+//
+// O-007/D-008 (2026-11-13, authorized): restore target epoch_length 50_000 for
+// Meritium mainnet (aligned with Monad mainnet/testnet baseline). Epoch-boundary
+// validator-set transition must be validated on testnet (multi-epoch, restart,
+// recovery) before mainnet activation; see MAINNET_BLOCKERS M-06 and
+// reports/audit/2026-11-11/M-06-implementation-checklist.md.
 const MERITIUM_MAINNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
     chain_id: MERITIUM_MAINNET_CHAIN_ID,
-    epoch_length: SeqNum(1_000_000),
+    epoch_length: SeqNum(50_000),
     epoch_start_delay: Round(5_000),
 
     v_0_7_0_activation: Round::MIN,
@@ -266,11 +270,14 @@ const MERITIUM_MAINNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
     execution_v_four_activation: 0,
 };
 
-// Meritium testnet — the live testnet runs as chain id 20260401 with the same
-// 1_000_000 epoch_length workaround.
+// Meritium testnet — the live testnet runs as chain id 20260401.
+//
+// O-007/D-008 (2026-11-13, authorized): restore target epoch_length 50_000.
+// Requires epoch-boundary validation evidence (validator-set snapshot/transition,
+// multi-epoch crossing, restart/recovery) before treating as production-safe.
 const MERITIUM_TESTNET_CHAIN_CONFIG: MonadChainConfig = MonadChainConfig {
     chain_id: MERITIUM_TESTNET_CHAIN_ID,
-    epoch_length: SeqNum(1_000_000),
+    epoch_length: SeqNum(50_000),
     epoch_start_delay: Round(5_000),
 
     v_0_7_0_activation: Round::MIN,
